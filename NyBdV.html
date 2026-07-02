@@ -70,11 +70,24 @@ tw-hook[name="combate"] { display:none !important; }
 #vn-combat .cbt-badge.leido { border-color:rgba(150,180,220,.5); color:#dbe7f5; }
 #vn-combat .cbt-badge.vac   { border-color:rgba(150,190,220,.55); color:#e6f2fb; }
 
-#vn-combat .cbt-log { flex:0 0 auto; width:100%; max-width:clamp(800px,70vw,1800px); margin:0 auto;
-    padding:.6vh 1.9em; text-align:center; font-size:clamp(11px,.95vw,15px);
-    color:rgba(241,241,241,.5); line-height:1.4; max-height:9vh; overflow:hidden; }
-#vn-combat .cbt-log div { opacity:.45; }
-#vn-combat .cbt-log div:last-child { opacity:.95; color:#f1f1f1; }
+#vn-combat-floats { position:fixed; inset:0; z-index:9; pointer-events:none; }
+#vn-combat-floats .cbt-float { position:absolute; transform:translate(-50%,0);
+    font-family:Georgia,serif; font-weight:700; letter-spacing:.02em;
+    font-size:clamp(15px,2vw,26px); color:#ff8a8a;
+    text-shadow:0 2px 8px rgba(0,0,0,.75), 0 0 16px rgba(0,0,0,.4);
+    white-space:nowrap; animation:cbtFloatUp 1.9s cubic-bezier(.18,.75,.3,1) forwards; }
+#vn-combat-floats .cbt-float.heal { color:#7fe3a8; }
+#vn-combat-floats .cbt-float.dodge { color:rgba(241,241,241,.65); font-style:italic; font-weight:600;
+    font-size:clamp(12px,1.3vw,18px); text-shadow:0 2px 6px rgba(0,0,0,.7); }
+#vn-combat-floats .cbt-float.status { color:#e8c97a; font-style:italic; font-weight:600;
+    font-size:clamp(12px,1.3vw,18px); text-shadow:0 2px 6px rgba(0,0,0,.7); }
+#vn-combat-floats .cbt-float.counter { color:#ffb15e; }
+@keyframes cbtFloatUp {
+    0%   { opacity:0; transform:translate(-50%, 4px) scale(.65); }
+    14%  { opacity:1; transform:translate(-50%, -10px) scale(1.12); }
+    30%  { opacity:1; transform:translate(-50%, -22px) scale(1); }
+    100% { opacity:0; transform:translate(-50%, -82px) scale(1); }
+}
 
 #vn-combat .cbt-panel { flex:0 0 auto; width:100%; max-width:clamp(800px,70vw,1800px);
     margin:0 auto; box-sizing:border-box; padding:1.2vh 1.9em 1.5vh;
@@ -92,6 +105,9 @@ tw-hook[name="combate"] { display:none !important; }
     background:linear-gradient(90deg, rgba(120,150,120,.9), rgba(160,196,160,.92)); transition:width .35s ease; }
 #vn-combat .cbt-stat { color:rgba(241,241,241,.82); white-space:nowrap; letter-spacing:.02em; }
 #vn-combat .cbt-stat b { color:#e8d9b0; font-weight:600; }
+#vn-combat .cbt-stat.clar { color:#cfe8ff; padding:.12em .6em; border:1px solid rgba(150,200,255,.5);
+    border-radius:3px; background:rgba(120,180,240,.08); box-shadow:0 0 12px rgba(120,180,240,.22); }
+#vn-combat .cbt-stat.clar b { color:#e6f2ff; }
 #vn-combat .cbt-prompt { text-align:center; font-style:italic; color:rgba(225,160,160,.9);
     min-height:1.1em; margin-bottom:.7vh; font-size:clamp(12px,1vw,16px); }
 #vn-combat .cbt-actions { display:flex; gap:.6em; flex-wrap:wrap; }
@@ -435,6 +451,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
     /* NOMBRES DE ARCHIVOS DEL PRELOADER*/
     var PRELOAD = [
         "CentralElectrica.jpg",
+        "FondoCombate.png",
         "FondoLiving.jpg",
         "FondoCuartoGabriel.jpg",
         "FondoCuartoGabrielNoche.png",
@@ -688,7 +705,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
        Port interactivo de sim_combate.py (v4). Overlay sobre el scaffold VN.
        Lanzado por maybeLaunchCombat() cuando un pasaje contiene |combate>[N]. */
     var CBT_P = {
-        php:22, f_php:26, atk_lo:3, atk_hi:5, leido_bonus:1, foco_passive:1,
+        php:22, f_php:26, atk_lo:2, atk_hi:5, leido_bonus:1, foco_passive:1,
         aliento_cura:6, aliento_coste:2, aliento_max:2,
         humildad_dmg:4, humildad_coste:2,
         claridad_dur:3, claridad_coste:3,
@@ -707,14 +724,64 @@ tw-passage[tags~="creditos"]::after { content:none; }
 
     var Combat = (function(){
         var ROOT=null, night=null, enemies=[], phaseIdx=0, g=null, owns=null,
-            pending=null, promptMsg="", logLines=[], active=false, busy=false;
+            pending=null, promptMsg="", active=false, busy=false, floatLayer=null;
 
         function buildRoot(){
             if (ROOT) return;
             ROOT = document.createElement("div"); ROOT.id="vn-combat";
+            ROOT.style.backgroundImage = 'linear-gradient(to bottom, rgba(7,6,10,.5) 0%, rgba(11,9,16,.28) 55%, rgba(5,4,9,.6) 100%), url("'+BASE+'FondoCombate.png")';
+            ROOT.style.backgroundSize = "cover";
+            ROOT.style.backgroundPosition = "center";
             document.body.appendChild(ROOT);
+            if (!document.getElementById("cbt-intro-css")){
+                var _st=document.createElement("style"); _st.id="cbt-intro-css";
+                _st.textContent=CBT_INTRO_CSS; document.head.appendChild(_st);
+            }
+            floatLayer = document.getElementById("vn-combat-floats");
+            if (!floatLayer){ floatLayer=document.createElement("div"); floatLayer.id="vn-combat-floats"; document.body.appendChild(floatLayer); }
         }
+        var CBT_INTRO_CSS = "#vn-combat .cbt-intro{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,7,11,.97);opacity:0;transition:opacity .3s}#vn-combat .cbt-intro.show{opacity:1}#vn-combat .cbt-intro.out{opacity:0}#vn-combat .cbt-intro-fig{max-height:52vh;max-width:62vw;object-fit:contain;opacity:0;transform:scale(.94);transition:opacity .35s,transform .5s;filter:drop-shadow(0 10px 34px rgba(0,0,0,.6))}#vn-combat .cbt-intro-fig.vis{opacity:1;transform:scale(1)}#vn-combat .cbt-intro-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}#vn-combat .cbt-intro-flash.go{animation:cbtFlash .44s ease-out}@keyframes cbtFlash{0%{opacity:0}13%{opacity:.97}100%{opacity:0}}";
+        function foeAnchor(e){ return ROOT && e && ROOT.querySelector('.cbt-foe[data-foe="'+e.key+'"] .cbt-foe-figwrap'); }
+        function playerAnchor(){ return ROOT && (ROOT.querySelector('.cbt-det-bar') || ROOT.querySelector('.cbt-det')); }
+        function spawnFloat(anchorEl, text, cls){
+            if (!anchorEl || !floatLayer) return;
+            var r = anchorEl.getBoundingClientRect();
+            var n = document.createElement("div");
+            n.className = "cbt-float" + (cls ? " "+cls : "");
+            n.textContent = text;
+            n.style.left = (r.left + r.width/2 + (Math.random()*24-12)) + "px";
+            n.style.top  = (r.top + r.height*0.15 + (Math.random()*8-4)) + "px";
+            floatLayer.appendChild(n);
+            n.addEventListener("animationend", function(){ if (n.parentNode) n.parentNode.removeChild(n); });
+            setTimeout(function(){ if (n.parentNode) n.parentNode.removeChild(n); }, 2300);
+        }
+        function floatDmg(anchorEl, amount, cls){ if (amount>0) spawnFloat(anchorEl, "-"+amount, cls||""); }
+        function floatHeal(anchorEl, amount){ if (amount>0) spawnFloat(anchorEl, "+"+amount, "heal"); }
+        function floatText(anchorEl, text, cls){ spawnFloat(anchorEl, text, cls||"dodge"); }
+        function clearFloats(){ if (floatLayer) floatLayer.innerHTML=""; }
 
+        function cbtTrait(type){
+            if (type==="obst") return {sprite:"Obstinacion.png", name:"La Obstinación"};
+            if (type==="par")  return {sprite:"Paranoia.png",    name:"La Paranoia"};
+            if (type==="mes")  return {sprite:"Mesias.png",      name:"El Mesías"};
+            return {sprite:"EnemigoPlaceholder.png", name:""};
+        }
+        function phaseIntro(e, cb){
+            busy=true;
+            var tr=cbtTrait(e.type);
+            var ov=document.createElement("div"); ov.className="cbt-intro";
+            ov.innerHTML='<img class="cbt-intro-fig" src="'+BASE+tr.sprite+'" alt="" onerror="this.style.display=\'none\'">'+
+                         '<div class="cbt-intro-flash"></div>';
+            ROOT.appendChild(ov);
+            var fig=ov.querySelector(".cbt-intro-fig"), fl=ov.querySelector(".cbt-intro-flash");
+            function flash(){ fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go"); }
+            setTimeout(function(){ ov.classList.add("show"); flash(); }, 40);
+            setTimeout(function(){ fig.classList.add("vis"); }, 210);
+            setTimeout(function(){ flash(); }, 1250);
+            setTimeout(function(){ fig.src=BASE+(e.sprite||"GxR.png"); }, 1390);
+            setTimeout(function(){ ov.classList.add("out"); }, 2150);
+            setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); busy=false; if(cb) cb(); }, 2500);
+        }
         function mkEnemy(o){
             return { key:o.key, name:o.name, type:o.type, atkAs:o.atkAs||null, sprite:o.sprite||null, pv:o.pv, pvmax:o.pv, dmg:o.dmg,
                      posture:!!o.posture, final:!!o.final,
@@ -758,7 +825,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
             return enemies.filter(function(e){ return e.pv>0 && e.alive; });
         }
 
-        function log(s){ logLines.push(s); if (logLines.length>4) logLines.shift(); }
+        function log(s){ if (typeof console!=="undefined" && console.log) console.log("[combate]", s); }
 
         function start(n){
             buildRoot();
@@ -767,11 +834,11 @@ tw-passage[tags~="creditos"]::after { content:none; }
             enemies = night.enemies; phaseIdx=0; owns=readOwns();
             g = { hp:night.hp, hpcap:night.hp, foco:0, duda:0, claridad:0,
                   alientos: owns.A ? CBT_P.aliento_max : 0, defend:false, last:null, consec:0 };
-            pending=null; promptMsg=""; logLines=[]; active=true; busy=false;
+            pending=null; promptMsg=""; active=true; busy=false;
             log("Empieza la discusión consigo mismo.");
             ROOT.classList.add("on");
-            turnStart();
-            maybeShowTips();
+            if (night.phased){ render(); phaseIntro(activeEnemies()[0], function(){ turnStart(); maybeShowTips(); }); }
+            else { turnStart(); maybeShowTips(); }
         }
 
         /* ---- inicio de turno del jugador ---- */
@@ -779,16 +846,21 @@ tw-passage[tags~="creditos"]::after { content:none; }
             g.defend=false; pending=null; promptMsg=""; busy=false;
             activeEnemies().forEach(function(e){
                 if (e.type==="mes"){ e.ft++; e.phase=(e.ft-1)%5; e.exp = e.phase>=3; }
+                /* Vacilación: se decide ANTES del turno del jugador, para que
+                   el aviso llegue a tiempo y se pueda aprovechar. */
+                e.vacila = (e.type!=="eco") && (Math.random()<CBT_P.vacila);
             });
             render();
+            activeEnemies().forEach(function(e){
+                if (e.vacila){ floatText(foeAnchor(e), "Vacila", "status"); log(dispName(e)+" vacila: queda expuesta este turno."); }
+            });
         }
 
         /* ---- intención visible (Escuchar / Claridad) ---- */
         function intent(e){
-            if (!(e.leido>0 || g.claridad>0)) return "";
             switch(e.type){
             case "eco": return "Te devolverá tu última acción.";
-            case "obst": return "Insiste; si la golpeás dos veces seguidas, contraataca.";
+            case "obst": return "Si la atacás dos veces, contraataca.";
             case "cert": return "Sostiene a la otra figura (la cura).";
             case "par": return e.leido>0 ? "Bajó la guardia: podés golpearla." : "Esquiva todo lo que no leíste.";
             case "desc": return (e.dt%2===0) ? "Va a atacar." : "Va a sembrar Duda.";
@@ -807,23 +879,20 @@ tw-passage[tags~="creditos"]::after { content:none; }
             case "obst": e.pv-=d; e.hc++; if (e.hc>=2){ e._counter=true; e.hc=0; } break;
             case "cert": e.pv-=d; enemies.forEach(function(x){ if(x.type==="obst") x.hc=0; }); break;
             case "par":
-                if (e.leido>0 || g.claridad>0) e.pv-=d;
+                if (e.leido>0 || g.claridad>0 || e.vacila) e.pv-=d;
                 else if (e.final) e.pv-=Math.floor(d*CBT_P.f_par_unread);
                 else log("La figura esquiva tu golpe (no la leíste).");
                 break;
             case "desc": e.pv-=d; break;
-            case "mes": e.pv -= e.exp ? d : Math.floor(d/2); break;
+            case "mes": e.pv -= (e.exp || e.vacila) ? d : Math.floor(d/2); break;
             }
         }
         function dealHumildad(e){
-            var full=false;
-            if (e.type==="obst"){ full=true; e.hc=0; e._counter=false; }
-            else if (e.type==="mes"){ full = !e.exp; }
-            e.pv -= full ? CBT_P.humildad_dmg : 1;
-            if (!full) log("Humildad sin postura que perforar: gesto vacío (1).");
+            if (e.type==="obst"){ e.hc=0; e._counter=false; }
+            e.pv -= CBT_P.humildad_dmg;
         }
         function dealPerspectiva(e){
-            var full = (e.leido>0 || (e.type==="mes" && e.exp));
+            var full = (e.leido>0 || e.vacila || (e.type==="mes" && e.exp));
             e.pv -= full ? CBT_P.persp_full : CBT_P.persp_weak;
         }
 
@@ -838,54 +907,58 @@ tw-passage[tags~="creditos"]::after { content:none; }
                 var d = cRand(CBT_P.atk_lo, CBT_P.atk_hi);
                 if (target.leido>0) d += CBT_P.leido_bonus;
                 if (g.duda>0){ d = Math.floor(d/2); g.duda--; log("La Duda debilita tu golpe."); }
-                dealConfront(target,d); g.last="C";
+                var _pv0=target.pv; dealConfront(target,d); g.last="C";
+                var _dealt=_pv0-target.pv;
+                if (_dealt>0) floatDmg(foeAnchor(target), _dealt); else floatText(foeAnchor(target), "Esquiva");
                 log("Confrontás a "+dispName(target)+".");
                 break; }
             case "R": g.foco+=1; g.defend=true; if(g.duda>0)g.duda--; g.last="R"; log("Respirás: te cubrís y aclarás la mente."); break;
-            case "E": g.foco+=1; target.leido=2; g.last="E"; log("Escuchás a "+dispName(target)+": queda Leído."); break;
-            case "A": g.foco-=CBT_P.aliento_coste; g.alientos--; g.hp=Math.min(g.hpcap,g.hp+CBT_P.aliento_cura); g.last="A"; log("Aliento: recuperás "+CBT_P.aliento_cura+" de Determinación."); break;
-            case "H": g.foco-=CBT_P.humildad_coste; dealHumildad(target); g.last="H"; log("Humildad sobre "+dispName(target)+"."); break;
-            case "Cl": g.foco-=CBT_P.claridad_coste; g.claridad=CBT_P.claridad_dur; g.duda=0; g.last="Cl"; log("Claridad: ves a todas las figuras y anulás sus esquivas (3 turnos)."); break;
-            case "P": g.foco-=CBT_P.persp_coste; dealPerspectiva(target); g.last="P"; log("Perspectiva sobre "+dispName(target)+"."); break;
+            case "E": g.foco+=1; target.leido=2; target._leidoFresh=true; g.last="E"; log("Escuchás a "+dispName(target)+": queda Leído."); break;
+            case "A": { g.foco-=CBT_P.aliento_coste; g.alientos--; var _hp0=g.hp; g.hp=Math.min(g.hpcap,g.hp+CBT_P.aliento_cura); var _healed=g.hp-_hp0; if(_healed>0) floatHeal(playerAnchor(), _healed); g.last="A"; log("Aliento: recuperás "+CBT_P.aliento_cura+" de Determinación."); break; }
+            case "H": { g.foco-=CBT_P.humildad_coste; var _pvH=target.pv; dealHumildad(target); var _dH=_pvH-target.pv; if(_dH>0) floatDmg(foeAnchor(target), _dH); g.last="H"; log("Humildad sobre "+dispName(target)+"."); break; }
+            case "Cl": g.foco-=CBT_P.claridad_coste; g.claridad=CBT_P.claridad_dur; g._claridadFresh=true; g.duda=0; g.last="Cl"; log("Claridad: ves a todas las figuras y anulás sus esquivas (3 turnos)."); break;
+            case "P": { g.foco-=CBT_P.persp_coste; var _pvP=target.pv; dealPerspectiva(target); var _dP=_pvP-target.pv; if(_dP>0) floatDmg(foeAnchor(target), _dP); g.last="P"; log("Perspectiva sobre "+dispName(target)+"."); break; }
             }
         }
 
         /* ===================== TURNO ENEMIGO ===================== */
-        function gabrielTake(dmg){ if (g.defend) dmg=Math.floor(dmg/2); g.hp-=dmg; return dmg; }
+        function gabrielTake(dmg){ if (g.defend || g.claridad>0) dmg=Math.floor(dmg/2); g.hp-=dmg; return dmg; }
 
         function enemyAttack(e){
-            var vac = (e.type!=="eco") && (Math.random()<CBT_P.vacila);
-            if (vac){ e.vacila=true; log(dispName(e)+" vacila — queda expuesta."); return; }
-            e.vacila=false;
+            if (e.vacila){ log(dispName(e)+" vacila y pierde su turno."); return; }
             var beh = e.atkAs || e.type;
             switch(beh){
             case "eco":
-                if (g.last==="C"){ var dmg=CBT_P.eco_base + CBT_P.eco_amp*(g.consec-1); var t=gabrielTake(dmg); log("La figura te devuelve el golpe: -"+t+"."); }
+                if (g.last==="C"){ var dmg=CBT_P.eco_base + CBT_P.eco_amp*(g.consec-1); var t=gabrielTake(dmg); floatDmg(playerAnchor(), t); log("La figura te devuelve el golpe: -"+t+"."); }
                 else { log("La figura no tiene golpe que devolver."); }
                 break;
             case "obst": {
-                var t1=gabrielTake(cRoll(e.dmg)); log(dispName(e)+" arremete: -"+t1+".");
+                var t1=gabrielTake(cRoll(e.dmg)); floatDmg(playerAnchor(), t1); log(dispName(e)+" arremete: -"+t1+".");
                 var cert=enemies.filter(function(x){return x.type==="cert"&&x.pv>0;})[0];
-                if (cert){ e.pv=Math.min(e.pvmax, e.pv+CBT_P.cert_heal); log("La otra figura la sostiene (+"+CBT_P.cert_heal+")."); }
+                if (cert){ e.pv=Math.min(e.pvmax, e.pv+CBT_P.cert_heal); floatHeal(foeAnchor(cert), CBT_P.cert_heal); log("La otra figura la sostiene (+"+CBT_P.cert_heal+")."); }
                 break; }
-            case "cert": { var t2=gabrielTake(cRoll(e.dmg)); log(dispName(e)+" te punza: -"+t2+"."); break; }
-            case "par": { var t3=gabrielTake(cRoll(e.dmg)); log(dispName(e)+" ataca: -"+t3+"."); break; }
+            case "cert": { var t2=gabrielTake(cRoll(e.dmg)); floatDmg(playerAnchor(), t2); log(dispName(e)+" te punza: -"+t2+"."); break; }
+            case "par": { var t3=gabrielTake(cRoll(e.dmg)); floatDmg(playerAnchor(), t3); log(dispName(e)+" ataca: -"+t3+"."); break; }
             case "desc":
                 e.dt++;
-                if (e.dt%2===1){ var t4=gabrielTake(cRoll(e.dmg)); log(dispName(e)+" ataca: -"+t4+"."); }
-                else { g.duda++; log(dispName(e)+" siembra Duda."); }
+                if (e.dt%2===1){ var t4=gabrielTake(cRoll(e.dmg)); floatDmg(playerAnchor(), t4); log(dispName(e)+" ataca: -"+t4+"."); }
+                else { g.duda++; floatText(playerAnchor(), "Duda", "status"); log(dispName(e)+" siembra Duda."); }
                 break;
             case "mes": {
-                if (e.phase!==2 && !e.exp){ var t5=gabrielTake(cRoll(e.dmg)); log("La figura golpea: -"+t5+"."); }
+                if (e.phase!==2 && !e.exp){ var t5=gabrielTake(cRoll(e.dmg)); floatDmg(playerAnchor(), t5); log("La figura golpea: -"+t5+"."); }
                 var heal = e.final ? CBT_P.f_mes_heal : CBT_P.mes_heal;
-                if (!e.exp && heal>0){ e.pv=Math.min(e.pvmax, e.pv+heal); }
+                if (!e.exp && heal>0){ e.pv=Math.min(e.pvmax, e.pv+heal); floatHeal(foeAnchor(e), heal); }
                 break; }
             }
         }
 
         function endOfTurn(){
-            enemies.forEach(function(e){ e.leido=Math.max(0,e.leido-1); });
-            g.claridad=Math.max(0,g.claridad-1);
+            enemies.forEach(function(e){
+                if (e._leidoFresh){ e._leidoFresh=false; }
+                else { e.leido=Math.max(0,e.leido-1); }
+            });
+            if (g._claridadFresh){ g._claridadFresh=false; }
+            else { g.claridad=Math.max(0,g.claridad-1); }
         }
 
         function checkWin(){ return activeEnemies().length===0; }
@@ -893,7 +966,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
         function enemyPhase(){
             /* contraataques pendientes primero */
             activeEnemies().forEach(function(e){
-                if (e._counter){ var c=e.final?CBT_P.f_obst_counter:CBT_P.obst_counter; var t=gabrielTake(c); e._counter=false; log("La figura contraataca tu insistencia: -"+t+"."); }
+                if (e._counter){ var c=e.final?CBT_P.f_obst_counter:CBT_P.obst_counter; var t=gabrielTake(c); e._counter=false; floatDmg(playerAnchor(), t, "counter"); log("La figura contraataca tu insistencia: -"+t+"."); }
             });
             if (g.hp<=0){ render(); setTimeout(function(){ finish(false); },650); return; }
             activeEnemies().forEach(function(e){ enemyAttack(e); });
@@ -926,20 +999,21 @@ tw-passage[tags~="creditos"]::after { content:none; }
             if (checkWin()){ setTimeout(function(){ finish(true); },650); return; }
             /* En el final (por fases): si la figura de esta fase cayó, la
                siguiente NO contraataca este turno; arranca el turno del jugador. */
-            if (night.phased && before && before.pv<=0){ setTimeout(turnStart, 520); return; }
-            setTimeout(enemyPhase, 520);
+            if (night.phased && before && before.pv<=0){ setTimeout(function(){ var _nx=activeEnemies()[0]; if(_nx){ phaseIntro(_nx, turnStart); } else { turnStart(); } }, 900); return; }
+            setTimeout(enemyPhase, 900);
         }
 
         function finish(win){
             active=false; busy=false;
             removeTipsModal();
+            clearFloats();
             ROOT.classList.remove("on");
             var dest = win ? night.win : night.lose;
             if (typeof fadeGoto==="function"){ fadeGoto(dest); }
             else if (typeof Engine!=="undefined"){ Engine.goToPassage(dest); }
         }
 
-        function hide(){ removeTipsModal(); if (ROOT){ ROOT.classList.remove("on"); } active=false; }
+        function hide(){ removeTipsModal(); clearFloats(); if (ROOT){ ROOT.classList.remove("on"); } active=false; }
 
         /* ===================== RENDER ===================== */
         function bar(cur,max){ return Math.max(0, Math.min(100, Math.round(100*cur/max))); }
@@ -957,16 +1031,15 @@ tw-passage[tags~="creditos"]::after { content:none; }
             var rv = revealed(e);
             var figcls = "cbt-foe-fig";
             if (e.vacila) figcls += " vac";                              /* Vacilación: telegrafiada */
-            else if (rv && e.type==="mes" && e.exp) figcls += " exp";    /* ventana: sólo si la leíste */
+            else if (e.type==="mes" && e.exp) figcls += " exp";
             var src = BASE + (e.sprite || "EnemigoPlaceholder.png");
             var badges = "";
             if (e.leido>0) badges += '<span class="cbt-badge leido">Leído</span>';
             if (e.vacila)  badges += '<span class="cbt-badge vac">Vacila</span>';
-            if (rv){
-                if (e.type==="mes" && e.exp) badges += '<span class="cbt-badge">Expuesto</span>';
-                else if (e.posture)          badges += '<span class="cbt-badge">En postura</span>';
-            }
-            var intentTxt = rv ? intent(e) : "";
+            /* Badges siempre visibles (no requieren Leído/Claridad). */
+            if (e.type==="mes" && e.exp) badges += '<span class="cbt-badge">Expuesto</span>';
+            else if (e.posture)          badges += '<span class="cbt-badge">En postura</span>';
+            var intentTxt = rv ? intent(e) : "No sabés qué trama. (Escuchar / Claridad)";
             return '<div class="cbt-foe'+(targetable?' targetable':'')+'" data-foe="'+e.key+'">'+
                    '<div class="cbt-foe-figwrap"><img class="'+figcls+'" src="'+src+'" alt="" onerror="this.style.display=\'none\'"></div>'+
                    '<div class="cbt-foe-meta">'+
@@ -1051,17 +1124,13 @@ tw-passage[tags~="creditos"]::after { content:none; }
             al.forEach(function(e){ html+=foeHTML(e, tgt); });
             html+='</div>';
 
-            html+='<div class="cbt-log">';
-            logLines.forEach(function(l){ html+='<div>'+l+'</div>'; });
-            html+='</div>';
-
             html+='<div class="cbt-panel">';
             html+='<div class="cbt-hud">';
             html+='<div class="cbt-det"><div class="cbt-det-label"><span>Determinación</span><span>'+Math.max(0,g.hp)+' / '+g.hpcap+'</span></div>'+
                   '<div class="cbt-det-bar"><div class="cbt-det-fill" style="width:'+bar(Math.max(0,g.hp),g.hpcap)+'%"></div></div></div>';
             html+='<div class="cbt-stat">Foco <b>'+g.foco+'</b></div>';
             if (g.duda>0) html+='<div class="cbt-stat">Duda <b>'+g.duda+'</b></div>';
-            if (g.claridad>0) html+='<div class="cbt-stat">Claridad <b>'+g.claridad+'</b></div>';
+            if (g.claridad>0) html+='<div class="cbt-stat clar">Claridad activa <b>'+g.claridad+'</b> turno'+(g.claridad===1?'':'s')+'</div>';
             if (owns.A) html+='<div class="cbt-stat">Aliento <b>'+g.alientos+'</b></div>';
             html+='</div>';
 
@@ -1735,6 +1804,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
     Music.define('final1',    'Final_1',   0.5);
     Music.define('final2',    'Final_2',   0.5);
     Music.define('final3',    'Final_3',   0.5);
+    Music.define('combate',   'Combate',   0.5);
 
     /* === Cues de musica ===
        La pista se deriva del PREFIJO del nombre del pasaje (PD/SD/TD/CD/QD
@@ -1742,6 +1812,7 @@ tw-passage[tags~="creditos"]::after { content:none; }
        cualquier forma de llegar a un pasaje (links, undo/redo, debug, saltos).
        Music.play() ya ignora la cue si la pista pedida es la que suena. */
     function trackForPassage(name) {
+        if (/Noche Combate$/.test(name) || name === 'QD Combate') return 'combate';
         if (/^QD Final 1/.test(name)) return 'final1';
         if (/^QD Final 2/.test(name)) return 'final2';
         if (/^QD Final 3/.test(name)) return 'final3';
@@ -2655,7 +2726,7 @@ Después no hubo nada.
 
 &quot;Los sistemas críticos de esta ciudad llevan años al límite. Lo que vimos esta semana no debería sorprender a nadie. Lo que debería sorprender es que todavía no tengamos una solución estructural.&quot;
 
-[[Continuar -&gt;QD La Mañana 3]] </tw-passagedata><tw-passagedata pid="186" name="Creditos" tags="creditos" position="1400,16075" size="100,100">{&lt;div id=&quot;vn-credits-roll&quot;&gt;&lt;div class=&quot;vn-cr-title&quot;&gt;Acá Iría El Título Si Se Me Hubiera Ocurrido Uno&lt;/div&gt;&lt;div class=&quot;vn-cr-head&quot;&gt;Música&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;My Side of the Story&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Soft Brush Touches&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Lonely Walk&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Maurice Green&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Succession (Main Theme)&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Nicholas Britell · cover de Katherine Cordova&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Metamorphosis Two&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Philip Glass&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Los Dinosaurios (Instrumental)&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Charly García&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Para Bellum&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Geoff Knorr&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Stella by Moor&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;SEATBELTS&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-head&quot;&gt;Imágenes&lt;/div&gt;&lt;div class=&quot;vn-cr-note&quot;&gt;Todas las imágenes de este juego fueron generadas mediante inteligencia artificial.&lt;/div&gt;&lt;div class=&quot;vn-cr-end&quot;&gt;Gracias por jugar&lt;/div&gt;&lt;/div&gt;}</tw-passagedata></tw-storydata>
+[[Continuar -&gt;QD La Mañana 3]] </tw-passagedata><tw-passagedata pid="186" name="Creditos" tags="creditos" position="1400,16075" size="100,100">{&lt;div id=&quot;vn-credits-roll&quot;&gt;&lt;div class=&quot;vn-cr-title&quot;&gt;Acá Iría El Título Si Se Me Hubiera Ocurrido Uno&lt;/div&gt;&lt;div class=&quot;vn-cr-head&quot;&gt;Música&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;My Side of the Story&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Soft Brush Touches&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Lonely Walk&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Maurice Green&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Succession (Main Theme)&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Nicholas Britell · cover de Katherine Cordova&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Metamorphosis Two&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Philip Glass&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Los Dinosaurios (Instrumental)&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Charly García&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Para Bellum&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;Geoff Knorr&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Stella by Moor&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;SEATBELTS&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-song&quot;&gt;&lt;div class=&quot;vn-cr-track&quot;&gt;Meat Grinder&lt;/div&gt;&lt;div class=&quot;vn-cr-artist&quot;&gt;LudoWic&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;vn-cr-head&quot;&gt;Imágenes&lt;/div&gt;&lt;div class=&quot;vn-cr-note&quot;&gt;Todas las imágenes de este juego fueron generadas mediante inteligencia artificial.&lt;/div&gt;&lt;div class=&quot;vn-cr-end&quot;&gt;Gracias por jugar&lt;/div&gt;&lt;/div&gt;}</tw-passagedata></tw-storydata>
 <script title="Twine engine code" data-main="harlowe">(function(){"use strict";
 var require,define;!function(){var e={},r={};require=function(i){var n=e[i];return n&&(r[i]=n[1].apply(void 0,n[0].map(require)),e[i]=void 0),r[i]},(define=function(r,i,n){if("function"==typeof r)return r();e[r]=[i,n]}).amd=!0}();/*!
  * https://github.com/paulmillr/es6-shim
